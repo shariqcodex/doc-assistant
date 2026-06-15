@@ -1,4 +1,3 @@
-
 # Document Assistant
 
 An AI-powered document assistant built with Python and Flask. Upload a PDF or TXT file and ask questions about it.
@@ -13,4 +12,8 @@ An AI-powered document assistant built with Python and Flask. Upload a PDF or TX
 - Python, Flask, Groq API, PyPDF2, HTML/CSS/JavaScript
 
 ## How to Run
-1. Clone
+1. Clone the repo
+2. Add your Groq API key to a `.env` file
+3. Run `pip install flask groq python-dotenv pypdf2`
+4. Run `python app.py`
+5. Open `http://127.0.0.1:5000`
