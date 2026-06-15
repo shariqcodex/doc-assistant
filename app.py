@@ -2,15 +2,17 @@ from flask import Flask, request, jsonify, render_template_string
 from groq import Groq
 from dotenv import load_dotenv
 import os
-
+from sentence_transformers import SentenceTransformer, util
 
 load_dotenv()
 
+model = SentenceTransformer('all-MiniLM-L6-v2')
 
 app = Flask(__name__)
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-document_text = ""
+document_chunks = []
+chunk_embeddings = None
 
 HTML = """
 <!DOCTYPE html>
@@ -108,46 +110,56 @@ def home():
 
 @app.route('/upload', methods=['POST'])
 def upload():
-    global document_text
-    file =  request.files['file']
+    global document_chunks, chunk_embeddings
+    file = request.files['file']
     filename = file.filename
+
     if filename.endswith('.txt'):
-        document_text = file.read().decode('utf-8')
+        text = file.read().decode('utf-8')
     elif filename.endswith('.pdf'):
         import PyPDF2
         import io
         reader = PyPDF2.PdfReader(io.BytesIO(file.read()))
-        document_text= ""
+        text = ""
         for page in reader.pages:
-            document_text += page.extract_text()
+            text += page.extract_text()
 
+    document_chunks = [text[i:i+500] for i in range(0,len(text),500)]
+    chunk_embeddings = model.encode(document_chunks, convert_to_tensor=True)
 
-
-
-    return jsonify({"status": "uploaded", "characters":len(document_text)}) 
+    return jsonify({"status":"uploaded", "chunks": len(document_chunks)})
 
 
 
 @app.route('/ask',methods=['POST'])
 def ask():
-    global document_text
-    data = request.json
-    question = data['question']
-    
+   global document_chunks, chunk_embeddings
+   data = request.json
+   question = data['question']
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content":f"You are a helpful assistant. Answer questions based on this document:\n\n{document_text[:3000]}"},
-            {"role": "user", "content": question}
-        ]
-    )
+   question_emedding = model.encode(question, convert_to_tensor=True)
+   scores = util.cos_sim(question_emedding, chunk_embeddings)[0]
+   best_chunk = document_chunks[scores.argmax()]
 
-    answer = response.choices[0].message.content
-    return jsonify({"answer":answer})
+   response = client.chat.completions.create(
+       model = "llama-3.3-70b-versatile",
+       messages=[ 
+           {"role": "system", "content": f"Answer based on this excerpt:\n\n{best_chunk}"},
+           {"role": "user", "content":question}
 
+
+       ]
+   )
+
+
+   answer = response.choices[0].message.content
+   return jsonify({"answer":answer})
 
 
 
 if __name__ == '__main__':
-    app.run(debug=True)2
+    app.run(debug=True)
+
+
+
+    
